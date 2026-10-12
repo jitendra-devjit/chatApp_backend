@@ -22,7 +22,27 @@ const messageSchema = new mongoose.Schema(
     },
     seen: {
         type: Boolean, default: false
-    }
+    },
+    // the message this one answers
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
+    },
+    // at most one emoji per person
+    reactions: [
+      {
+        _id: false,
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        emoji: { type: String, required: true },
+      },
+    ],
+    editedAt: {
+      type: Date,
+    },
+    // set when the sender deletes it for everyone, text and image are wiped then
+    deletedAt: {
+      type: Date,
+    },
   },
   { timestamps: true } // adds createdAt, updatedAt
 );

@@ -82,6 +82,55 @@ describe("realtime", () => {
     tab2.close();
   });
 
+  test("relays typing to the other person with the real sender id", async () => {
+    const [a, b, c] = [await ctx.createUser(), await ctx.createUser(), await ctx.createUser()];
+    const socketA = await ctx.connectSocket({ token: a.token });
+    const socketB = await ctx.connectSocket({ token: b.token });
+    const socketC = await ctx.connectSocket({ token: c.token });
+
+    let leaked = false;
+    socketC.on("typing", () => (leaked = true));
+
+    const typing = waitForEvent(socketB, "typing");
+    // "from" is ignored, nobody can type as somebody else
+    socketA.emit("typing", { to: b.id, isTyping: true, from: c.id });
+    assert.deepEqual(await typing, { from: a.id, isTyping: true });
+
+    const stopped = waitForEvent(socketB, "typing");
+    socketA.emit("typing", { to: b.id, isTyping: false });
+    assert.deepEqual(await stopped, { from: a.id, isTyping: false });
+
+    // bad payloads are dropped without crashing the server
+    socketA.emit("typing", null);
+    socketA.emit("typing", { to: { $ne: null }, isTyping: true });
+    socketA.emit("typing", { to: "not-an-id", isTyping: true });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(leaked, false);
+    assert.equal((await ctx.api("GET", "/api/status")).status, 200);
+    [socketA, socketB, socketC].forEach((socket) => socket.close());
+  });
+
+  test("tells the sender when their messages are read", async () => {
+    const [a, b] = [await ctx.createUser(), await ctx.createUser()];
+    const socketA = await ctx.connectSocket({ token: a.token });
+
+    // b opens the chat
+    await ctx.api("POST", `/api/messages/send/${b.id}`, { token: a.token, body: { text: "one" } });
+    const seenOnOpen = waitForEvent(socketA, "messagesSeen");
+    await ctx.api("GET", `/api/messages/${a.id}`, { token: b.token });
+    assert.deepEqual(await seenOnOpen, { by: b.id });
+
+    // b marks a single message while the chat is already open
+    const { body } = await ctx.api("POST", `/api/messages/send/${b.id}`, { token: a.token, body: { text: "two" } });
+    const seenOnMark = waitForEvent(socketA, "messagesSeen");
+    await ctx.api("PUT", `/api/messages/mark/${body.newMessage._id}`, { token: b.token });
+    assert.deepEqual(await seenOnMark, { by: b.id });
+
+    const users = await ctx.api("GET", "/api/messages/users", { token: a.token });
+    assert.equal(users.body.lastMessages[b.id].seen, true);
+    socketA.close();
+  });
+
   test("tracks who is online across tabs", async () => {
     const [a, b] = [await ctx.createUser(), await ctx.createUser()];
     const watcher = await ctx.connectSocket({ token: a.token });

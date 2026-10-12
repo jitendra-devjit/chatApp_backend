@@ -210,6 +210,14 @@ describe("update profile", () => {
     assert.equal(ctx.uploads[0].resource_type, "image");
   });
 
+  test("removes the profile picture", async () => {
+    const user = await ctx.createUser();
+    await ctx.api("PUT", "/api/auth/update-profile", { token: user.token, body: { profilePic: PNG_DATA_URI } });
+    const res = await ctx.api("PUT", "/api/auth/update-profile", { token: user.token, body: { profilePic: "" } });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.user.profilePic, "");
+  });
+
   const badImages = {
     "an html file": "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
     "an svg (can carry scripts)": "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",

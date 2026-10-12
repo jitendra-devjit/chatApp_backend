@@ -25,6 +25,10 @@ const userSchema = new mongoose.Schema({
         type: String,  //cloudinary_url
         default:"",
     },
+    // when the user last went offline
+    lastSeen: {
+        type: Date,
+    },
     bio: {
         type:String,
         trim: true,

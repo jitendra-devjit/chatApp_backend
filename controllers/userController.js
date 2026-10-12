@@ -74,7 +74,9 @@ export const updateProfile = async (req, res) => {
 
     if (fullName !== undefined) updates.fullName = requireString(fullName, "Full name", { min: 2, max: 50 });
     if (bio !== undefined) updates.bio = requireString(bio, "Bio", { min: 0, max: 160 });
-    if (profilePic) {
+    if (profilePic === "" || profilePic === null) {
+      updates.profilePic = ""; // remove the photo
+    } else if (profilePic !== undefined) {
       updates.profilePic = await uploadImage(requireImageDataUri(profilePic), "avatars");
     }
 

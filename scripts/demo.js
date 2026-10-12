@@ -28,9 +28,8 @@ const { default: cloudinary } = await import("../lib/cloudinary.js");
 const { default: User } = await import("../models/User.js");
 const { default: Message } = await import("../models/Message.js");
 
-if (!process.env.CLOUDINARY_API_KEY) {
-  cloudinary.uploader.upload = async (dataUri) => ({ secure_url: dataUri });
-}
+// demo data is thrown away, so pictures stay in the database instead of going to Cloudinary
+cloudinary.uploader.upload = async (dataUri) => ({ secure_url: dataUri });
 
 const password = await bcrypt.hash(DEMO_PASSWORD, 10);
 const [me, aarav, sara, kabir, meera] = await User.create(DEMO_USERS.map((user) => ({ ...user, password })));
