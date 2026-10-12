@@ -11,7 +11,8 @@ process.env.MESSAGE_RATE_LIMIT ??= "1000";
 export const PNG_DATA_URI =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
-export const FAKE_IMAGE_URL = "https://res.cloudinary.com/test/image/upload/fake.png";
+export const FAKE_IMAGE_URL = "https://res.cloudinary.com/test/image/upload/v1700000000/chat-app/messages/fake.png";
+export const FAKE_IMAGE_ID = "chat-app/messages/fake";
 
 // Starts the real app against an in-memory MongoDB on a random port
 export const startTestServer = async () => {
@@ -30,6 +31,12 @@ export const startTestServer = async () => {
   cloudinary.uploader.upload = async (data, options) => {
     uploads.push(options);
     return { secure_url: FAKE_IMAGE_URL };
+  };
+
+  const destroyed = [];
+  cloudinary.uploader.destroy = async (publicId) => {
+    destroyed.push(publicId);
+    return { result: "ok" };
   };
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -87,7 +94,7 @@ export const startTestServer = async () => {
     await mongo.stop();
   };
 
-  return { url, api, createUser, connectSocket, uploads, stop, User, Message };
+  return { url, api, createUser, connectSocket, uploads, destroyed, stop, User, Message };
 };
 
 // waits for one socket event, fails if it does not arrive in time

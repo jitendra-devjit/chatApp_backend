@@ -27,9 +27,11 @@ const { server } = await import("../app.js");
 const { default: cloudinary } = await import("../lib/cloudinary.js");
 const { default: User } = await import("../models/User.js");
 const { default: Message } = await import("../models/Message.js");
+const { default: Group } = await import("../models/Group.js");
 
 // demo data is thrown away, so pictures stay in the database instead of going to Cloudinary
 cloudinary.uploader.upload = async (dataUri) => ({ secure_url: dataUri });
+cloudinary.uploader.destroy = async () => ({ result: "ok" });
 
 const password = await bcrypt.hash(DEMO_PASSWORD, 10);
 const [me, aarav, sara, kabir, meera] = await User.create(DEMO_USERS.map((user) => ({ ...user, password })));
@@ -59,6 +61,38 @@ await Message.insertMany(
     chat(me, kabir, "Trek this Saturday still on?", 60 * 30),
     chat(kabir, me, "100%. Leaving at 5 am, don't be late this time 😄", 60 * 29),
     chat(meera, me, "Sending the notes from today's call in a bit.", 60 * 50),
+  ],
+  { timestamps: false }
+);
+
+// a group with a short conversation, so group chats can be tried right away
+const groupStart = minutesAgo(60 * 48);
+const launchTeam = await Group.create({
+  name: "Launch team",
+  description: "Everything about the December launch.",
+  createdBy: me._id,
+  members: [me, aarav, sara, kabir].map((user, index) => ({
+    user: user._id,
+    role: index === 0 ? "admin" : "member",
+    joinedAt: groupStart,
+    lastReadAt: minutesAgo(60 * 5),
+  })),
+});
+const inGroup = (from, text, minutes, extra = {}) => ({
+  groupId: launchTeam._id,
+  senderId: from._id,
+  text,
+  createdAt: minutesAgo(minutes),
+  updatedAt: minutesAgo(minutes),
+  ...extra,
+});
+await Message.insertMany(
+  [
+    inGroup(me, "Jitendra created the group", 60 * 48 - 1, { system: true }),
+    inGroup(me, "Welcome everyone. Launch is on the 12th, let's keep all updates here.", 60 * 47),
+    inGroup(aarav, "Design is done, handing over the final screens today.", 60 * 8),
+    inGroup(sara, "API is ready for load testing 🚀", 60 * 7),
+    inGroup(kabir, "I'll run the tests tonight and share the numbers.", 60 * 6),
   ],
   { timestamps: false }
 );

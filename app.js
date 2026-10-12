@@ -6,6 +6,7 @@ import { app, server } from "./lib/socket.js";
 import { errorHandler, notFound } from "./middleware/error.js";
 import userRouter from "./routes/userRoutes.js";
 import messageRouter from "./routes/messageRoutes.js";
+import groupRouter from "./routes/groupRoutes.js";
 
 // behind one proxy on Render/Railway/Vercel, needed so rate limits see the real IP
 app.set("trust proxy", 1);
@@ -19,6 +20,7 @@ app.use(express.json({ limit: "5mb" }));
 app.get("/api/status", (req, res) => res.send("Server is live"));
 app.use("/api/auth", userRouter);
 app.use("/api/messages", messageRouter);
+app.use("/api/groups", groupRouter);
 
 app.use(notFound);
 app.use(errorHandler);

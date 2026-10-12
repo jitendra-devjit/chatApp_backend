@@ -1,7 +1,7 @@
-import { uploadImage } from "../lib/cloudinary.js";
+import { deleteImage, uploadImage } from "../lib/cloudinary.js";
 import { HttpError } from "../lib/httpError.js";
 import { generateToken } from "../lib/utils.js";
-import { requireEmail, requireImageDataUri, requirePassword, requireString } from "../lib/validate.js";
+import { requireEmail, requireImageDataUri, requireObjectId, requirePassword, requireString } from "../lib/validate.js";
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 
@@ -85,5 +85,41 @@ export const updateProfile = async (req, res) => {
       runValidators: true,
     });
 
+    // the picture that was replaced or removed is not needed any more
+    if (updates.profilePic !== undefined) await deleteImage(req.user.profilePic);
+
     res.json({ success: true, user: updatedUser });
+};
+
+const MAX_PINNED_CHATS = 5;
+const CHAT_PREFS = { pinned: "pinnedChats", muted: "mutedChats", archived: "archivedChats" };
+
+// Pin, mute or archive a chat (a person or a group) for the logged in user.
+// Body: chatId plus any of pinned, muted, archived as true or false
+
+export const updateChatPrefs = async (req, res) => {
+    const body = req.body || {};
+    const chatId = requireObjectId(body.chatId, "chat id");
+
+    const add = {};
+    const remove = {};
+    for (const [name, field] of Object.entries(CHAT_PREFS)) {
+        if (body[name] === undefined) continue;
+        if (typeof body[name] !== "boolean") throw new HttpError(400, `${name} must be true or false`);
+        (body[name] ? add : remove)[field] = chatId;
+    }
+
+    const alreadyPinned = req.user.pinnedChats.some((id) => id.equals(chatId));
+    if (add.pinnedChats && !alreadyPinned && req.user.pinnedChats.length >= MAX_PINNED_CHATS) {
+        throw new HttpError(400, `You can pin up to ${MAX_PINNED_CHATS} chats`);
+    }
+
+    const update = {};
+    if (Object.keys(add).length > 0) update.$addToSet = add;
+    if (Object.keys(remove).length > 0) update.$pull = remove;
+    const user = Object.keys(update).length > 0
+        ? await User.findByIdAndUpdate(req.user._id, update, { new: true })
+        : req.user;
+
+    res.json({ success: true, user });
 };

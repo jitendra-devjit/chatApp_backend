@@ -29,6 +29,10 @@ const userSchema = new mongoose.Schema({
     lastSeen: {
         type: Date,
     },
+    // chats (people or groups) this user pinned, muted or archived
+    pinnedChats: [{ type: mongoose.Schema.Types.ObjectId }],
+    mutedChats: [{ type: mongoose.Schema.Types.ObjectId }],
+    archivedChats: [{ type: mongoose.Schema.Types.ObjectId }],
     bio: {
         type:String,
         trim: true,

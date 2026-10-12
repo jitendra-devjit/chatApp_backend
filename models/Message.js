@@ -10,7 +10,18 @@ const messageSchema = new mongoose.Schema(
     receiverId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User", // who gets the message
-      required: true,
+      required: function () {
+        return !this.groupId; // a group message has no single receiver
+      },
+    },
+    // set when the message belongs to a group conversation
+    groupId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Group",
+    },
+    // a line like "Aarav added Sara", written by the server
+    system: {
+      type: Boolean,
     },
     text: {
       type: String,
@@ -49,6 +60,8 @@ const messageSchema = new mongoose.Schema(
 
 // loading one conversation, newest first
 messageSchema.index({ senderId: 1, receiverId: 1, createdAt: -1 });
+// loading one group conversation, newest first
+messageSchema.index({ groupId: 1, createdAt: -1 });
 // counting unseen messages per sender
 messageSchema.index({ receiverId: 1, seen: 1, senderId: 1 });
 
