@@ -7,6 +7,7 @@ import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server-core";
 
 process.env.JWT_SECRET ||= "demo-secret-only-for-local-use-do-not-deploy";
+process.env.STORAGE_DRIVER = "local"; // files sent in the demo stay in a temp folder on this machine
 
 const DEMO_PASSWORD = "demo1234";
 const DEMO_USERS = [

@@ -31,6 +31,22 @@ const messageSchema = new mongoose.Schema(
     image: {
         type: String,
     },
+    // photos, videos, voice notes and documents sent with the message
+    attachments: [
+      {
+        _id: false,
+        type: { type: String, enum: ["image", "video", "audio", "file"], required: true },
+        url: { type: String, required: true },
+        name: String,
+        size: Number, // bytes
+        duration: Number, // seconds, for video and audio
+        width: Number,
+        height: Number,
+        waveform: { type: [Number], default: undefined }, // loudness over time of a voice note, 0 to 100
+        publicId: String, // where the file lives in storage, needed to delete it
+        resourceType: String,
+      },
+    ],
     seen: {
         type: Boolean, default: false
     },

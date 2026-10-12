@@ -1,11 +1,12 @@
 import { deleteImage, uploadImage } from "../lib/cloudinary.js";
 import { HttpError } from "../lib/httpError.js";
-import { cleanText, fetchPage, REPLY_FIELDS, searchPage, toPreview } from "../lib/messageHelpers.js";
+import { cleanText, collectAttachments, deleteAttachments, fetchPage, REPLY_FIELDS, searchPage, toPreview } from "../lib/messageHelpers.js";
 import { emitToUser } from "../lib/socket.js";
 import { requireEmoji, requireImageDataUri, requireObjectId } from "../lib/validate.js";
 import Group from "../models/Group.js";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
+import { originOf } from "../routes/uploadRoutes.js";
 
 // a message can be edited for this long after it was sent
 export const EDIT_WINDOW_MS = 15 * 60 * 1000;
@@ -116,12 +117,13 @@ export const markMessageAsSeen = async (req, res) => {
 // send message to selected user
 
 export const sendMessage = async(req, res) => {
-    const {text, image, replyTo} = req.body || {};
+    const {text, image, replyTo, attachments: uploads} = req.body || {};
     const receiverId = requireObjectId(req.params.id, "user id");
     const senderId = req.user._id;
 
     const messageText = cleanText(text);
-    if (!messageText && !image) throw new HttpError(400, "Message is empty");
+    const hasFiles = Array.isArray(uploads) && uploads.length > 0;
+    if (!messageText && !image && !hasFiles) throw new HttpError(400, "Message is empty");
 
     if (senderId.equals(receiverId)) throw new HttpError(400, "You cannot message yourself");
     const receiver = await User.exists({ _id: receiverId });
@@ -142,11 +144,13 @@ export const sendMessage = async(req, res) => {
     if(image){
         imageUrl = await uploadImage(requireImageDataUri(image), "messages");
     }
+    const attachments = await collectAttachments(uploads, originOf(req));
     const created = await Message.create({
         senderId,
         receiverId,
         text: messageText || undefined,
         image: imageUrl,
+        attachments,
         replyTo: replyToId,
     })
     const newMessage = await created.populate("replyTo", REPLY_FIELDS);
@@ -187,13 +191,15 @@ export const deleteMessage = async (req, res) => {
 
     if (!message.deletedAt) {
         const image = message.image;
+        const files = { attachments: message.attachments.toObject() };
         message.text = undefined;
         message.image = undefined;
+        message.attachments = [];
         message.reactions = [];
         message.deletedAt = new Date();
         await message.save();
-        // the picture itself goes too, not only the link to it
-        await deleteImage(image);
+        // the files themselves go too, not only the links to them
+        await Promise.all([deleteImage(image), deleteAttachments(files)]);
     }
 
     res.json({ success: true, message: await broadcastUpdate(message) });

@@ -4,6 +4,7 @@ import { io as ioClient } from "socket.io-client";
 
 process.env.JWT_SECRET = "test-secret-that-is-long-enough-for-tests";
 process.env.CLIENT_URL = "http://localhost:5173";
+process.env.STORAGE_DRIVER = "local"; // message files stay on this machine
 process.env.AUTH_RATE_LIMIT ??= "1000";
 process.env.MESSAGE_RATE_LIMIT ??= "1000";
 

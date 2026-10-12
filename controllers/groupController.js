@@ -1,11 +1,12 @@
 import { deleteImage, uploadImage } from "../lib/cloudinary.js";
 import { HttpError } from "../lib/httpError.js";
-import { cleanText, fetchPage, REPLY_FIELDS, searchPage, toPreview } from "../lib/messageHelpers.js";
+import { cleanText, collectAttachments, deleteAttachments, fetchPage, REPLY_FIELDS, searchPage, toPreview } from "../lib/messageHelpers.js";
 import { emitToUser } from "../lib/socket.js";
 import { requireImageDataUri, requireObjectId, requireString } from "../lib/validate.js";
 import Group, { MAX_GROUP_MEMBERS } from "../models/Group.js";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
+import { originOf } from "../routes/uploadRoutes.js";
 
 // what other members may know about a member
 const MEMBER_FIELDS = "fullName profilePic bio lastSeen";
@@ -187,12 +188,13 @@ export const markGroupRead = async (req, res) => {
 // send a message to a group
 
 export const sendGroupMessage = async (req, res) => {
-    const { text, image, replyTo } = req.body || {};
+    const { text, image, replyTo, attachments: uploads } = req.body || {};
     const senderId = req.user._id;
     const group = await requireMembership(req.params.id, senderId);
 
     const messageText = cleanText(text);
-    if (!messageText && !image) throw new HttpError(400, "Message is empty");
+    const hasFiles = Array.isArray(uploads) && uploads.length > 0;
+    if (!messageText && !image && !hasFiles) throw new HttpError(400, "Message is empty");
 
     // a reply can only quote a message of this same group
     let replyToId;
@@ -207,11 +209,13 @@ export const sendGroupMessage = async (req, res) => {
     }
 
     const imageUrl = image ? await uploadImage(requireImageDataUri(image), "messages") : undefined;
+    const attachments = await collectAttachments(uploads, originOf(req));
     const created = await Message.create({
         groupId: group._id,
         senderId,
         text: messageText || undefined,
         image: imageUrl,
+        attachments,
         replyTo: replyToId,
     });
     const newMessage = await created.populate("replyTo", REPLY_FIELDS);
@@ -279,8 +283,15 @@ export const removeGroupMember = async (req, res) => {
 
     // nobody is left: the group and its conversation go away
     if (group.members.length === 0) {
-        const withImages = await Message.find({ groupId: group._id, image: { $exists: true } }).select("image");
-        await Promise.all([...withImages.map((message) => deleteImage(message.image)), deleteImage(group.avatar)]);
+        const withFiles = await Message.find({
+            groupId: group._id,
+            $or: [{ image: { $exists: true } }, { "attachments.0": { $exists: true } }],
+        }).select("image attachments");
+        await Promise.all([
+            ...withFiles.map((message) => deleteImage(message.image)),
+            ...withFiles.map(deleteAttachments),
+            deleteImage(group.avatar),
+        ]);
         await Message.deleteMany({ groupId: group._id });
         await group.deleteOne();
         return res.json({ success: true, group: null });

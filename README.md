@@ -44,11 +44,29 @@ Protected routes need `Authorization: Bearer <token>`.
 | GET | `/api/messages/users` | yes | Everyone else, with unread counts and the last message per conversation |
 | GET | `/api/messages/:id` | yes | Messages with a user, newest page first. `?limit=` and `?before=<ISO date>` page backwards, `?since=<ISO date>` returns everything from that date |
 | GET | `/api/messages/search/:id` | yes | Messages with a user whose text contains `?q=` |
-| POST | `/api/messages/send/:id` | yes | Send `text` and/or `image` (base64). `replyTo` quotes a message of the same conversation |
+| POST | `/api/messages/send/:id` | yes | Send `text`, `attachments` (see Files) and/or `image` (base64). `replyTo` quotes a message of the same conversation |
 | PUT | `/api/messages/mark/:id` | yes | Mark a received message as seen |
 | PUT | `/api/messages/:id` | yes | Edit the `text` of your own message, within 15 minutes |
 | DELETE | `/api/messages/:id` | yes | Delete your own message for both people |
 | PUT | `/api/messages/:id/reaction` | yes | React with one `emoji`. The same emoji again removes it |
+
+### Files
+
+Photos, videos, voice notes and documents do not pass through this server. The browser uploads them straight to Cloudinary:
+
+1. `POST /api/uploads/ticket` with `{ kind }` (`image`, `video`, `audio` or `file`) returns a signed permission: the upload `url` and the `fields` to send with the file.
+2. The browser posts the file to that url and gets a receipt from Cloudinary.
+3. The message is sent with `attachments: [{ kind, upload: <receipt>, name }]`, at most 10. The server checks the signature of every receipt, so only files that really went to this app's folder are accepted.
+
+| Kind | Formats | Limit |
+| --- | --- | --- |
+| `image` | png, jpg, jpeg, webp, gif | 10 MB |
+| `video` | mp4, webm, mov | 100 MB (the most Cloudinary's free plan takes) |
+| `audio` | webm, ogg, mp3, m4a, mp4, wav, aac | 10 MB |
+| `file` | pdf, doc, docx, xls, xlsx, ppt, pptx, txt, csv, zip | 10 MB |
+
+`npm run check:storage` uploads, verifies and deletes a tiny file with the account from `.env`, to prove the setup works.
+Cloudinary blocks links to PDF and ZIP files until "Allow delivery of PDF and ZIP files" is switched on under Settings, Security.
 
 ### Groups
 
@@ -93,7 +111,8 @@ Connect with `io(url, { auth: { token } })`. A connection without a valid token 
 - Passwords are hashed with bcrypt and never leave the database: the field is excluded from every query by default.
 - Sockets are authenticated with the same JWT as the API, so nobody can listen as another user.
 - Every input is type-checked before it reaches a query, which blocks NoSQL operator injection.
-- Uploads must be real PNG, JPG, WEBP or GIF images (the file signature is checked) under 3 MB.
+- Profile and group pictures must be real PNG, JPG, WEBP or GIF images (the file signature is checked) under 3 MB.
+- Message files are uploaded with a signed ticket that fixes the folder and the allowed formats, and every upload receipt is verified before it is attached.
 - Only the sender can edit or delete a message, and only the two people in a conversation can react or reply to it.
 - Group routes answer 404 to anybody who is not a member, and only admins manage members.
 - Pictures are deleted from storage when their message, profile or group no longer uses them.
@@ -106,4 +125,4 @@ Connect with `io(url, { auth: { token } })`. A connection without a valid token 
 npm test
 ```
 
-107 tests run the real app against an in-memory MongoDB: auth, validation, access control, groups, search, pagination, realtime delivery and rate limits.
+122 tests run the real app against an in-memory MongoDB: auth, validation, access control, groups, files, search, pagination, realtime delivery and rate limits.

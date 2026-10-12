@@ -7,7 +7,8 @@
     "server": "node --watch server.js",
     "start": "node server.js",
     "test": "node --test --test-concurrency=1 \"tests/*.test.js\"",
-    "demo": "node scripts/demo.js"
+    "demo": "node scripts/demo.js",
+    "check:storage": "node scripts/check-storage.js"
   },
   "keywords": [],
   "author": "",
