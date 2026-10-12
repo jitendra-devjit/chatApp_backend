@@ -12,21 +12,35 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: true,
         trim: true,
+        maxlength: 50,
         index: true
     },
     password: {
         type: String,
         required: [true, "Password is required"],
-        minlength:6
+        minlength:6,
+        select: false, // never returned by a query unless asked with .select("+password")
     },
     profilePic: {
         type: String,  //cloudinary_url
         default:"",
     },
     bio: {
-        type:String
+        type:String,
+        trim: true,
+        maxlength: 160,
+        default: "",
     },
-},{timestamps: true})
+},{
+    timestamps: true,
+    toJSON: {
+        transform: (doc, ret) => {
+            delete ret.password;
+            delete ret.__v;
+            return ret;
+        },
+    },
+})
 
 const User = mongoose.model("User", userSchema);
 
