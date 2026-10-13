@@ -88,7 +88,10 @@ Every route needs a token and, apart from creating, membership of the group. Out
 | DELETE | `/api/groups/:id/members/:userId` | Remove somebody (admins), or leave when it is your own id |
 | PUT | `/api/groups/:id/members/:userId` | Set `role` to `admin` or `member` (admins) |
 
-Editing, deleting and reacting use the `/api/messages/:id` routes for group messages too.
+Editing, deleting and reacting use the `/api/messages/:id` routes for group messages too. So do these two:
+
+- `POST /api/messages/:id/forward` with `userIds` and/or `groupIds` (together at most 5) sends the text and files of a message on. The new messages carry `forwarded: true`. A forwarded file is shared, it is only removed from storage when the last message that shows it is deleted.
+- `GET /api/messages/:id/files/:index/link` returns `{ url }` for one file of a message, `?download=1` for a download. For a document on Cloudinary this is a signed API link that works for five minutes: Cloudinary answers 401 on the normal link of a PDF or ZIP unless "PDF and ZIP files delivery" is allowed in the account, the API link works either way.
 
 Errors always look like `{ "success": false, "message": "..." }` with a matching HTTP status.
 
@@ -146,4 +149,4 @@ Voice and video calls are one-to-one and peer to peer (WebRTC). The server only 
 npm test
 ```
 
-141 tests run the real app against an in-memory MongoDB: auth, validation, access control, groups, files, search, pagination, realtime delivery, calls and rate limits.
+147 tests run the real app against an in-memory MongoDB: auth, validation, access control, groups, files, search, pagination, realtime delivery, calls and rate limits.

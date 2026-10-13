@@ -218,7 +218,7 @@ export const sendGroupMessage = async (req, res) => {
         attachments,
         replyTo: replyToId,
     });
-    const newMessage = await created.populate("replyTo", REPLY_FIELDS);
+    const newMessage = replyToId ? await created.populate("replyTo", REPLY_FIELDS) : created;
 
     emitToGroup(group, "newMessage", newMessage, senderId);
     await markRead(group, senderId);
@@ -287,12 +287,13 @@ export const removeGroupMember = async (req, res) => {
             groupId: group._id,
             $or: [{ image: { $exists: true } }, { "attachments.0": { $exists: true } }],
         }).select("image attachments");
+        // the messages go first: a file is only removed when no message is left that shows it
+        await Message.deleteMany({ groupId: group._id });
         await Promise.all([
             ...withFiles.map((message) => deleteImage(message.image)),
-            ...withFiles.map(deleteAttachments),
+            ...withFiles.map((message) => deleteAttachments(message)),
             deleteImage(group.avatar),
         ]);
-        await Message.deleteMany({ groupId: group._id });
         await group.deleteOne();
         return res.json({ success: true, group: null });
     }

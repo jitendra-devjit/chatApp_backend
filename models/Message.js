@@ -66,6 +66,10 @@ const messageSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Message",
     },
+    // sent on from another conversation
+    forwarded: {
+      type: Boolean,
+    },
     // at most one emoji per person
     reactions: [
       {
@@ -91,6 +95,8 @@ messageSchema.index({ senderId: 1, receiverId: 1, createdAt: -1 });
 messageSchema.index({ groupId: 1, createdAt: -1 });
 // adding up the calls of a month, only messages that are calls are in this index
 messageSchema.index({ "call.status": 1, createdAt: -1 }, { partialFilterExpression: { "call.status": { $exists: true } } });
+// "does another message still use this file", asked when a message with files is deleted
+messageSchema.index({ "attachments.publicId": 1 }, { sparse: true });
 // counting unseen messages per sender
 messageSchema.index({ receiverId: 1, seen: 1, senderId: 1 });
 

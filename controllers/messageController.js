@@ -2,6 +2,7 @@ import { deleteImage, uploadImage } from "../lib/cloudinary.js";
 import { HttpError } from "../lib/httpError.js";
 import { cleanText, collectAttachments, deleteAttachments, fetchPage, REPLY_FIELDS, searchPage, toPreview } from "../lib/messageHelpers.js";
 import { emitToUser } from "../lib/socket.js";
+import { temporaryLink } from "../lib/storage.js";
 import { requireEmoji, requireImageDataUri, requireObjectId } from "../lib/validate.js";
 import Group from "../models/Group.js";
 import Message from "../models/Message.js";
@@ -10,6 +11,8 @@ import { originOf } from "../routes/uploadRoutes.js";
 
 // a message can be edited for this long after it was sent
 export const EDIT_WINDOW_MS = 15 * 60 * 1000;
+// a message can be sent on to this many chats in one go
+export const MAX_FORWARD_TARGETS = 5;
 
 // the two directions of a one-to-one conversation
 const conversationFilter = (userA, userB) => ({
@@ -154,13 +157,74 @@ export const sendMessage = async(req, res) => {
         attachments,
         replyTo: replyToId,
     })
-    const newMessage = await created.populate("replyTo", REPLY_FIELDS);
+    // only a reply has something to look up, every other message is ready as it is
+    const newMessage = replyToId ? await created.populate("replyTo", REPLY_FIELDS) : created;
 
     //Emit the new message to every open socket of the receiver
     emitToUser(receiverId, "newMessage", newMessage);
 
     res.status(201).json({success: true, newMessage})
 }
+
+// Send a message on to other chats: `userIds` and `groupIds`, together at most MAX_FORWARD_TARGETS.
+// The text and the files travel along, the reply quote and the reactions do not
+
+const uniqueIds = (raw, field) => {
+    if (raw === undefined || raw === null) return [];
+    if (!Array.isArray(raw)) throw new HttpError(400, "Choose where to forward the message");
+    return [...new Set(raw.map((id) => requireObjectId(id, field)))];
+};
+
+export const forwardMessage = async (req, res) => {
+    const senderId = req.user._id;
+    const source = await findAccessibleMessage(req.params.id, senderId);
+    if (source.deletedAt) throw new HttpError(400, "This message was deleted");
+
+    const attachments = source.attachments.toObject();
+    // (a picture sent the old way, as `image`, has no record of where it is stored)
+    if (!source.text && attachments.length === 0) throw new HttpError(400, "This message cannot be forwarded");
+
+    const userIds = uniqueIds(req.body?.userIds, "user id").filter((id) => id !== String(senderId));
+    const groupIds = uniqueIds(req.body?.groupIds, "group id");
+    const total = userIds.length + groupIds.length;
+    if (total === 0) throw new HttpError(400, "Choose where to forward the message");
+    if (total > MAX_FORWARD_TARGETS) throw new HttpError(400, `A message can be forwarded to at most ${MAX_FORWARD_TARGETS} chats at once`);
+
+    const [userCount, groups] = await Promise.all([
+        User.countDocuments({ _id: { $in: userIds } }),
+        Group.find({ _id: { $in: groupIds }, "members.user": senderId }).select("members.user"),
+    ]);
+    if (userCount !== userIds.length || groups.length !== groupIds.length) throw new HttpError(404, "One of these chats was not found");
+
+    const content = { senderId, text: source.text, attachments, forwarded: true };
+    const messages = await Message.create([
+        ...userIds.map((receiverId) => ({ ...content, receiverId })),
+        ...groups.map((group) => ({ ...content, groupId: group._id })),
+    ]);
+
+    for (const message of messages) {
+        if (message.receiverId) {
+            emitToUser(message.receiverId, "newMessage", message);
+            continue;
+        }
+        const group = groups.find((item) => item._id.equals(message.groupId));
+        for (const member of group.members) {
+            if (!member.user.equals(senderId)) emitToUser(member.user, "newMessage", message);
+        }
+    }
+
+    res.status(201).json({ success: true, messages });
+};
+
+// A link that opens one file of a message, or downloads it with ?download=1.
+// Only somebody who can see the message gets one, and it stops working after a few minutes
+
+export const getFileLink = async (req, res) => {
+    const message = await findAccessibleMessage(req.params.id, req.user._id);
+    const attachment = /^\d{1,2}$/.test(req.params.index) ? message.attachments[Number(req.params.index)] : null;
+    if (!attachment) throw new HttpError(404, "File not found");
+    res.json({ success: true, url: temporaryLink(attachment, { download: req.query.download === "1" }) });
+};
 
 // edit the text of a message you sent
 
