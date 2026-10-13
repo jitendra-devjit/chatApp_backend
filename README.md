@@ -28,7 +28,8 @@ npm start        # production
 | `JWT_SECRET` | Signs login tokens. At least 32 characters in production |
 | `CLIENT_URL` | Frontend origin(s) allowed to call the API, comma separated |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Image storage |
-| `TURN_URLS`, `TURN_USERNAME`, `TURN_CREDENTIAL` | Optional. A TURN server for calls on networks that block a direct connection. Without it only STUN is offered |
+| `CLOUDFLARE_TURN_KEY_ID`, `CLOUDFLARE_TURN_API_TOKEN` | A Cloudflare Realtime TURN key. The server asks Cloudflare for short-lived logins and hands them to the browsers |
+| `TURN_URLS`, `TURN_USERNAME`, `TURN_CREDENTIAL` | Alternative: any TURN server with a fixed login |
 | `PORT` | Defaults to `5000` |
 
 ## API
@@ -110,15 +111,16 @@ Connect with `io(url, { auth: { token } })`. A connection without a valid token 
 | `call:incoming` | server → client | `{ callId, kind, from }`, on every open tab of the person being called |
 | `call:accept` | client → server | `{ callId }`, answered with `{ ok }`. The tab that accepts holds the call |
 | `call:accepted` | server → client | `{ callId }`, to the caller, who then sends the WebRTC offer |
-| `call:decline`, `call:end` | client → server | `{ callId }` |
+| `call:decline`, `call:end` | client → server | `{ callId }`. `call:end` with `failed: true` says the two browsers never reached each other |
 | `call:signal` | both ways | `{ callId, data }`: offers, answers and ICE candidates, passed to the other person untouched once the call is answered |
-| `call:ended` | server → client | `{ callId, reason }`: `declined`, `cancelled`, `missed`, `ended`, `disconnected` or `answered_elsewhere` |
+| `call:ended` | server → client | `{ callId, reason }`: `declined`, `cancelled`, `missed`, `ended`, `failed`, `disconnected` or `answered_elsewhere` |
 
 ### Calls
 
 Voice and video calls are one-to-one and peer to peer (WebRTC). The server only rings, relays the signaling above and keeps the state of running calls in memory, so it has to run as a single instance.
 
-- `GET /api/calls/ice` returns the `iceServers` for `RTCPeerConnection`: public STUN servers, plus the TURN server from the environment when one is set.
+- `GET /api/calls/ice` returns the `iceServers` for `RTCPeerConnection`: public STUN servers, plus the TURN server from the environment when one is set. `relay` tells the client whether a TURN server is among them.
+- **A TURN server is needed in practice.** STUN alone only connects two people whose networks allow a direct path. Phones on mobile data are usually behind a NAT that does not: the call rings and is answered, but no sound or picture arrives. With TURN the call is relayed.
 - A call rings for 35 seconds. Somebody who is offline or on another call is not rung.
 - When a call ends the server writes it into the conversation as a message with a `call` field: `{ kind, status, duration }`, status is `completed`, `missed` or `declined`. `senderId` is the caller. Only a missed call counts as unread. These messages cannot be edited, deleted or reacted to.
 - A user can start at most 10 calls a minute.
@@ -142,4 +144,4 @@ Voice and video calls are one-to-one and peer to peer (WebRTC). The server only 
 npm test
 ```
 
-137 tests run the real app against an in-memory MongoDB: auth, validation, access control, groups, files, search, pagination, realtime delivery, calls and rate limits.
+139 tests run the real app against an in-memory MongoDB: auth, validation, access control, groups, files, search, pagination, realtime delivery, calls and rate limits.

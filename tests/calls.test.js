@@ -207,6 +207,19 @@ describe("answering", () => {
     close(a, b);
   });
 
+  test("a call whose browsers cannot reach each other ends as failed, for both, and is not a conversation", async () => {
+    const [a, b] = await connect();
+    const callId = await ring(a, b);
+    await ask(b.socket, "call:accept", { callId });
+
+    const log = callLog(a.socket);
+    const over = Promise.all([waitForEvent(a.socket, "call:ended"), waitForEvent(b.socket, "call:ended")]);
+    b.socket.emit("call:end", { callId, failed: true });
+    assert.deepEqual(await over, [{ callId, reason: "failed" }, { callId, reason: "failed" }]);
+    assert.deepEqual((await log).call, { kind: "audio", status: "missed" });
+    close(a, b);
+  });
+
   test("declining ends it for the caller and is written down as declined", async () => {
     const [a, b] = await connect();
     const callId = await ring(a, b);
@@ -327,6 +340,48 @@ describe("ICE servers", () => {
     assert.equal(status, 200);
     assert.equal(body.iceServers.length, 1);
     assert.match(body.iceServers[0].urls[0], /^stun:/);
+    assert.equal(body.relay, false);
+  });
+
+  test("add short-lived logins from Cloudflare, and work without them when Cloudflare is down", async () => {
+    Object.assign(process.env, { CLOUDFLARE_TURN_KEY_ID: "key-1", CLOUDFLARE_TURN_API_TOKEN: "token-1" });
+    const user = await ctx.createUser();
+    const realFetch = globalThis.fetch;
+    const asked = [];
+    let healthy = false;
+    globalThis.fetch = async (url, options) => {
+      if (!String(url).includes("rtc.live.cloudflare.com")) return realFetch(url, options);
+      asked.push({ url: String(url), authorization: options.headers.Authorization });
+      if (!healthy) return new Response("down", { status: 500 });
+      return Response.json({
+        iceServers: [
+          { urls: ["stun:stun.cloudflare.com:3478", "stun:stun.cloudflare.com:53"] },
+          { urls: ["turn:turn.cloudflare.com:3478?transport=udp", "turn:turn.cloudflare.com:53?transport=udp", "turns:turn.cloudflare.com:443?transport=tcp"], username: "u", credential: "p" },
+        ],
+      });
+    };
+    try {
+      const down = await ctx.api("GET", "/api/calls/ice", { token: user.token });
+      assert.equal(down.status, 200);
+      assert.equal(down.body.relay, false);
+
+      healthy = true;
+      const up = await ctx.api("GET", "/api/calls/ice", { token: user.token });
+      assert.equal(up.body.relay, true);
+      assert.match(asked[1].url, /\/keys\/key-1\/credentials\/generate-ice-servers$/);
+      assert.equal(asked[1].authorization, "Bearer token-1");
+      const turn = up.body.iceServers.at(-1);
+      assert.equal(turn.username, "u");
+      // port 53 is dropped, browsers do not connect to it
+      assert.deepEqual(turn.urls, ["turn:turn.cloudflare.com:3478?transport=udp", "turns:turn.cloudflare.com:443?transport=tcp"]);
+
+      // the login is reused instead of asking Cloudflare for every call
+      await ctx.api("GET", "/api/calls/ice", { token: user.token });
+      assert.equal(asked.length, 2);
+    } finally {
+      globalThis.fetch = realFetch;
+      ["CLOUDFLARE_TURN_KEY_ID", "CLOUDFLARE_TURN_API_TOKEN"].forEach((key) => delete process.env[key]);
+    }
   });
 
   test("add the TURN server from the environment", async () => {
