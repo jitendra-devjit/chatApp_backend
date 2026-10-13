@@ -28,6 +28,7 @@ npm start        # production
 | `JWT_SECRET` | Signs login tokens. At least 32 characters in production |
 | `CLIENT_URL` | Frontend origin(s) allowed to call the API, comma separated |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Image storage |
+| `TURN_URLS`, `TURN_USERNAME`, `TURN_CREDENTIAL` | Optional. A TURN server for calls on networks that block a direct connection. Without it only STUN is offered |
 | `PORT` | Defaults to `5000` |
 
 ## API
@@ -105,6 +106,22 @@ Connect with `io(url, { auth: { token } })`. A connection without a valid token 
 | `groupUpdated` | server → client | The group, after it was created or changed |
 | `groupRead` | server → client | `{ groupId, userId, lastReadAt }` when a member read the group |
 | `groupRemoved` | server → client | `{ groupId }` when you left or were removed |
+| `call:start` | client → server | `{ to, kind }`, kind is `audio` or `video`. Answered with `{ ok, callId }` or `{ ok: false, reason, message }` (`offline`, `busy`, `in_call`, `rate_limited`, ...) |
+| `call:incoming` | server → client | `{ callId, kind, from }`, on every open tab of the person being called |
+| `call:accept` | client → server | `{ callId }`, answered with `{ ok }`. The tab that accepts holds the call |
+| `call:accepted` | server → client | `{ callId }`, to the caller, who then sends the WebRTC offer |
+| `call:decline`, `call:end` | client → server | `{ callId }` |
+| `call:signal` | both ways | `{ callId, data }`: offers, answers and ICE candidates, passed to the other person untouched once the call is answered |
+| `call:ended` | server → client | `{ callId, reason }`: `declined`, `cancelled`, `missed`, `ended`, `disconnected` or `answered_elsewhere` |
+
+### Calls
+
+Voice and video calls are one-to-one and peer to peer (WebRTC). The server only rings, relays the signaling above and keeps the state of running calls in memory, so it has to run as a single instance.
+
+- `GET /api/calls/ice` returns the `iceServers` for `RTCPeerConnection`: public STUN servers, plus the TURN server from the environment when one is set.
+- A call rings for 35 seconds. Somebody who is offline or on another call is not rung.
+- When a call ends the server writes it into the conversation as a message with a `call` field: `{ kind, status, duration }`, status is `completed`, `missed` or `declined`. `senderId` is the caller. Only a missed call counts as unread. These messages cannot be edited, deleted or reacted to.
+- A user can start at most 10 calls a minute.
 
 ## Security
 
@@ -125,4 +142,4 @@ Connect with `io(url, { auth: { token } })`. A connection without a valid token 
 npm test
 ```
 
-122 tests run the real app against an in-memory MongoDB: auth, validation, access control, groups, files, search, pagination, realtime delivery and rate limits.
+137 tests run the real app against an in-memory MongoDB: auth, validation, access control, groups, files, search, pagination, realtime delivery, calls and rate limits.

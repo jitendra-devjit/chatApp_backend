@@ -8,6 +8,7 @@ import userRouter from "./routes/userRoutes.js";
 import messageRouter from "./routes/messageRoutes.js";
 import groupRouter from "./routes/groupRoutes.js";
 import uploadRouter, { localUploads } from "./routes/uploadRoutes.js";
+import callRouter from "./routes/callRoutes.js";
 import { isLocalStorage } from "./lib/storage.js";
 
 // behind one proxy on Render/Railway/Vercel, needed so rate limits see the real IP
@@ -24,6 +25,7 @@ app.use("/api/auth", userRouter);
 app.use("/api/messages", messageRouter);
 app.use("/api/groups", groupRouter);
 app.use("/api/uploads", uploadRouter);
+app.use("/api/calls", callRouter);
 if (isLocalStorage()) app.use("/uploads", localUploads);
 
 app.use(notFound);

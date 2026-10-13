@@ -47,6 +47,17 @@ const messageSchema = new mongoose.Schema(
         resourceType: String,
       },
     ],
+    // a voice or video call between the two, written by the server when it ends. senderId is the caller
+    call: {
+      type: new mongoose.Schema(
+        {
+          kind: { type: String, enum: ["audio", "video"], required: true },
+          status: { type: String, enum: ["completed", "missed", "declined"], required: true },
+          duration: Number, // seconds talked, for a completed call
+        },
+        { _id: false }
+      ),
+    },
     seen: {
         type: Boolean, default: false
     },

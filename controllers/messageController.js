@@ -26,7 +26,8 @@ const findAccessibleMessage = async (id, userId) => {
     const allowed = message && (message.groupId
         ? await Group.exists({ _id: message.groupId, "members.user": userId })
         : message.senderId.equals(userId) || message.receiverId.equals(userId));
-    if (!allowed || message.system) throw new HttpError(404, "Message not found");
+    // lines written by the server (group events, calls) cannot be edited, deleted or reacted to
+    if (!allowed || message.system || message.call) throw new HttpError(404, "Message not found");
     return message;
 };
 
