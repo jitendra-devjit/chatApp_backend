@@ -332,6 +332,57 @@ describe("calls in the chat", () => {
   });
 });
 
+describe("limits that keep the relay free of charge", () => {
+  test("a call ends by itself after the longest time a call may take", async () => {
+    process.env.CALL_MAX_MINUTES = "0.005"; // 300 ms
+    const [a, b] = await connect();
+    const callId = await ring(a, b);
+    const over = waitForEvent(a.socket, "call:ended");
+    const log = callLog(a.socket);
+    await ask(b.socket, "call:accept", { callId });
+    delete process.env.CALL_MAX_MINUTES;
+
+    assert.deepEqual(await over, { callId, reason: "limit" });
+    assert.equal((await log).call.status, "completed");
+    close(a, b);
+  });
+
+  test("when the calls of the month reach the limit no relay is handed out, and next month it is back", async () => {
+    const { forgetCallUsage } = await import("../lib/calls.js");
+    Object.assign(process.env, { TURN_URLS: "turn:turn.example.com:3478", TURN_USERNAME: "u", TURN_CREDENTIAL: "p", CALL_MONTHLY_HOURS: "2" });
+    const [a, b] = [await ctx.createUser(), await ctx.createUser()];
+    const talk = (hours, createdAt) =>
+      ctx.Message.create({ senderId: a.id, receiverId: b.id, seen: true, call: { kind: "video", status: "completed", duration: hours * 3600 }, createdAt });
+    try {
+      // a long call last month does not count, and neither does a missed one
+      const lastMonth = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
+      await ctx.Message.collection.insertOne({ senderId: a.id, receiverId: b.id, call: { kind: "video", status: "completed", duration: 500 * 3600 }, createdAt: lastMonth });
+      await ctx.Message.create({ senderId: a.id, receiverId: b.id, call: { kind: "audio", status: "missed" } });
+      await talk(1.5);
+      forgetCallUsage();
+      let ice = await ctx.api("GET", "/api/calls/ice", { token: a.token });
+      assert.equal(ice.body.relay, true);
+      let usage = await ctx.api("GET", "/api/calls/usage", { token: a.token });
+      assert.equal(usage.body.exceeded, false);
+      assert.ok(usage.body.hours >= 1.5 && usage.body.hours < 2);
+
+      await talk(0.6);
+      forgetCallUsage();
+      ice = await ctx.api("GET", "/api/calls/ice", { token: a.token });
+      assert.equal(ice.body.relay, false);
+      assert.equal(ice.body.iceServers.length, 1); // STUN only: free calls still work
+      usage = await ctx.api("GET", "/api/calls/usage", { token: a.token });
+      assert.equal(usage.body.exceeded, true);
+      assert.equal(usage.body.limit, 2);
+      assert.equal((await ctx.api("GET", "/api/calls/usage")).status, 401);
+    } finally {
+      await ctx.Message.deleteMany({ senderId: a.id });
+      forgetCallUsage();
+      ["TURN_URLS", "TURN_USERNAME", "TURN_CREDENTIAL", "CALL_MONTHLY_HOURS"].forEach((key) => delete process.env[key]);
+    }
+  });
+});
+
 describe("ICE servers", () => {
   test("need a login and offer STUN by default", async () => {
     assert.equal((await ctx.api("GET", "/api/calls/ice")).status, 401);

@@ -89,6 +89,8 @@ const messageSchema = new mongoose.Schema(
 messageSchema.index({ senderId: 1, receiverId: 1, createdAt: -1 });
 // loading one group conversation, newest first
 messageSchema.index({ groupId: 1, createdAt: -1 });
+// adding up the calls of a month, only messages that are calls are in this index
+messageSchema.index({ "call.status": 1, createdAt: -1 }, { partialFilterExpression: { "call.status": { $exists: true } } });
 // counting unseen messages per sender
 messageSchema.index({ receiverId: 1, seen: 1, senderId: 1 });
 

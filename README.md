@@ -30,6 +30,7 @@ npm start        # production
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Image storage |
 | `CLOUDFLARE_TURN_KEY_ID`, `CLOUDFLARE_TURN_API_TOKEN` | A Cloudflare Realtime TURN key. The server asks Cloudflare for short-lived logins and hands them to the browsers |
 | `TURN_URLS`, `TURN_USERNAME`, `TURN_CREDENTIAL` | Alternative: any TURN server with a fixed login |
+| `CALL_MAX_MINUTES`, `CALL_MONTHLY_HOURS` | Optional, default 60 and 150. The limits that keep the TURN relay inside its free allowance, see Calls |
 | `PORT` | Defaults to `5000` |
 
 ## API
@@ -113,7 +114,7 @@ Connect with `io(url, { auth: { token } })`. A connection without a valid token 
 | `call:accepted` | server → client | `{ callId }`, to the caller, who then sends the WebRTC offer |
 | `call:decline`, `call:end` | client → server | `{ callId }`. `call:end` with `failed: true` says the two browsers never reached each other |
 | `call:signal` | both ways | `{ callId, data }`: offers, answers and ICE candidates, passed to the other person untouched once the call is answered |
-| `call:ended` | server → client | `{ callId, reason }`: `declined`, `cancelled`, `missed`, `ended`, `failed`, `disconnected` or `answered_elsewhere` |
+| `call:ended` | server → client | `{ callId, reason }`: `declined`, `cancelled`, `missed`, `ended`, `failed`, `limit`, `disconnected` or `answered_elsewhere` |
 
 ### Calls
 
@@ -124,6 +125,7 @@ Voice and video calls are one-to-one and peer to peer (WebRTC). The server only 
 - A call rings for 35 seconds. Somebody who is offline or on another call is not rung.
 - When a call ends the server writes it into the conversation as a message with a `call` field: `{ kind, status, duration }`, status is `completed`, `missed` or `declined`. `senderId` is the caller. Only a missed call counts as unread. These messages cannot be edited, deleted or reacted to.
 - A user can start at most 10 calls a minute.
+- **Cost guard.** A TURN relay is billed by the gigabyte after a free monthly amount (Cloudflare: 1,000 GB). Three limits keep the app below it: a call ends by itself after `CALL_MAX_MINUTES` (reason `limit`), the browsers send at most 0.9 Mbit/s of video, and once the answered calls of the month add up to `CALL_MONTHLY_HOURS` the server stops handing out the relay until the next month (direct calls keep working). `GET /api/calls/usage` returns `{ hours, limit, exceeded }`. Every answered call counts, relayed or not, so the real usage is lower than the count.
 
 ## Security
 
@@ -144,4 +146,4 @@ Voice and video calls are one-to-one and peer to peer (WebRTC). The server only 
 npm test
 ```
 
-139 tests run the real app against an in-memory MongoDB: auth, validation, access control, groups, files, search, pagination, realtime delivery, calls and rate limits.
+141 tests run the real app against an in-memory MongoDB: auth, validation, access control, groups, files, search, pagination, realtime delivery, calls and rate limits.
