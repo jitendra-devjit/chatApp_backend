@@ -9,7 +9,7 @@ export const errorHandler = (err, req, res, next) => {
   if (err instanceof HttpError) {
     return res.status(err.status).json({ success: false, message: err.message });
   }
-  if (err.type === "entity.too.large") {
+  if (err.type === "entity.too.largef") {
     return res.status(413).json({ success: false, message: "File is too large" });
   }
   if (err.type === "entity.parse.failed") {
