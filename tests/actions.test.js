@@ -6,7 +6,7 @@ let ctx;
 before(async () => {
   ctx = await startTestServer();
 });
-after(() => ctx.stop());
+after(() => ctx.stop() );
 
 const send = async (from, to, body) => {
   const res = await ctx.api("POST", `/api/messages/send/${to.id}`, { token: from.token, body });
